@@ -1,0 +1,14 @@
+[run]
+source = src
+omit =
+    src/app/*
+    src/di/*
+    src/domain/i_*.py
+    */tests/*
+    */venv/*
+    */.venv/*
+    */__init__.py
+
+[report]
+show_missing = True
+skip_covered = True

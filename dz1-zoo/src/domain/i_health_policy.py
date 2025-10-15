@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 
-class IAlive(ABC):
-    @property
+class IHealthPolicy(ABC):
     @abstractmethod
-    def food(self):
+    def is_healthy(self, animal):
         pass
