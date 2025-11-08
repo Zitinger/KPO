@@ -1,0 +1,41 @@
+{
+  "accounts": [
+    {
+      "id": "a1",
+      "name": "Кошелек",
+      "balance": 0.0
+    }
+  ],
+  "categories": [
+    {
+      "id": "c1",
+      "type": "income",
+      "name": "Зарплата"
+    },
+    {
+      "id": "c2",
+      "type": "expense",
+      "name": "Еда"
+    }
+  ],
+  "operations": [
+    {
+      "id": "o1",
+      "type": "income",
+      "bank_account_id": "a1",
+      "amount": 1000,
+      "date": "2025-11-01",
+      "description": "",
+      "category_id": "c1"
+    },
+    {
+      "id": "o2",
+      "type": "expense",
+      "bank_account_id": "a1",
+      "amount": 200,
+      "date": "2025-11-02",
+      "description": "обед",
+      "category_id": "c2"
+    }
+  ]
+}
