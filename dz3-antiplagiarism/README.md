@@ -3,7 +3,8 @@
 
 ---
 
-Программа написана на Python (FastAPI), + Docker / docker-compose - 
+Программа написана на Python (FastAPI), + Docker / docker-compose 
+
 3 сервиса (2 бизнес‑микросервиса + API Gateway)
 
 Доп. требование на 10 баллов: облако слов через QuickChart Word Cloud API
