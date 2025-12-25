@@ -1,0 +1,162 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: dz4_rabbitmq
+    restart: unless-stopped
+    ports:
+    - 5672:5672
+    - 15672:15672
+    healthcheck:
+      test:
+      - CMD
+      - rabbitmq-diagnostics
+      - -q
+      - ping
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7-alpine
+    container_name: dz4_redis
+    restart: unless-stopped
+    ports:
+    - 6379:6379
+    healthcheck:
+      test:
+      - CMD
+      - redis-cli
+      - ping
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  orders-db:
+    image: postgres:16-alpine
+    container_name: dz4_orders_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orders
+      POSTGRES_USER: orders
+      POSTGRES_PASSWORD: orders
+    ports:
+    - 5433:5432
+    volumes:
+    - orders_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U orders -d orders
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  payments-db:
+    image: postgres:16-alpine
+    container_name: dz4_payments_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: payments
+      POSTGRES_USER: payments
+      POSTGRES_PASSWORD: payments
+    ports:
+    - 5434:5432
+    volumes:
+    - payments_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U payments -d payments
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  payments:
+    build:
+      context: ./services/payments
+    container_name: dz4_payments
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: payments
+      DATABASE_DSN: postgresql://payments:payments@payments-db:5432/payments
+      RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
+      OUTBOX_PUBLISH_INTERVAL_SEC: '0.5'
+      OUTBOX_BATCH_SIZE: '50'
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      payments-db:
+        condition: service_healthy
+    expose:
+    - '8000'
+  orders-1:
+    build:
+      context: ./services/orders
+    container_name: dz4_orders_1
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: orders-1
+      DATABASE_DSN: postgresql://orders:orders@orders-db:5432/orders
+      RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
+      REDIS_URL: redis://redis:6379/0
+      OUTBOX_PUBLISH_INTERVAL_SEC: '0.5'
+      OUTBOX_BATCH_SIZE: '50'
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      orders-db:
+        condition: service_healthy
+    expose:
+    - '8000'
+  orders-2:
+    build:
+      context: ./services/orders
+    container_name: dz4_orders_2
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: orders-2
+      DATABASE_DSN: postgresql://orders:orders@orders-db:5432/orders
+      RABBIT_URL: amqp://guest:guest@rabbitmq:5672/
+      REDIS_URL: redis://redis:6379/0
+      OUTBOX_PUBLISH_INTERVAL_SEC: '0.5'
+      OUTBOX_BATCH_SIZE: '50'
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      orders-db:
+        condition: service_healthy
+    expose:
+    - '8000'
+  gateway-1:
+    build:
+      context: ./services/gateway
+    container_name: dz4_gateway_1
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: gateway-1
+      ORDERS_URLS: http://orders-1:8000,http://orders-2:8000
+      PAYMENTS_URL: http://payments:8000
+    depends_on:
+    - orders-1
+    - orders-2
+    - payments
+    expose:
+    - '8000'
+  edge:
+    build:
+      context: ./edge
+    container_name: dz4_edge
+    restart: unless-stopped
+    depends_on:
+    - gateway-1
+    - orders-1
+    - orders-2
+    - frontend
+    ports:
+    - 8080:80
+  frontend:
+    build: ./frontend
+    restart: always
+volumes:
+  orders_db_data: null
+  payments_db_data: null
