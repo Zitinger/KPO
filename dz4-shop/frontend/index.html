@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DZ4 - Заказы и уведомления</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background: #0b0f16; color: #e8eefc; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    .muted { color: #98a6c9; font-size: 13px; }
+    .card { background: #121a27; border: 1px solid #22304a; border-radius: 14px; padding: 16px; margin-top: 16px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    label { display: block; font-size: 12px; color: #b9c5e6; margin-bottom: 6px; }
+    input { width: 100%; box-sizing: border-box; background: #0f1623; color: #e8eefc; border: 1px solid #22304a; border-radius: 10px; padding: 10px 12px; }
+    button { background: #2b6cff; color: white; border: 0; border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+    button.secondary { background: #2a344a; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .btns { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+    pre { background: #0f1623; border: 1px solid #22304a; border-radius: 10px; padding: 10px 12px; overflow: auto; }
+
+    .toasts { position: fixed; top: 14px; right: 14px; display: flex; flex-direction: column; gap: 10px; z-index: 9999; }
+    .toast { background: #121a27; border: 1px solid #2b6cff; border-radius: 12px; padding: 10px 12px; min-width: 260px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    .toast .t { font-weight: 700; font-size: 13px; }
+    .toast .d { margin-top: 4px; font-size: 12px; color: #b9c5e6; }
+  </style>
+</head>
+<body>
+  <div class="toasts" id="toasts"></div>
+  <div class="wrap">
+    <h1>DZ4: Orders + Payments + WebSocket</h1>
+    <div class="muted">Минимальный фронтенд для проверки статусов заказа и всплывающих уведомлений.</div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>user_id (из заголовка X-User-Id)</label>
+          <input id="userId" value="u1" />
+        </div>
+        <div>
+          <label>Сумма пополнения</label>
+          <input id="depositAmount" type="number" value="500" />
+        </div>
+      </div>
+      <div class="btns">
+        <button id="btnEnable">Включить уведомления браузера</button>
+        <button id="btnCreateAccount" class="secondary">Создать счет</button>
+        <button id="btnDeposit" class="secondary">Пополнить</button>
+      </div>
+      <div class="muted" style="margin-top:10px">Если браузерные уведомления не нужны - все равно будут toast-уведомления внутри страницы.</div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label>Сумма заказа</label>
+          <input id="orderAmount" type="number" value="200" />
+        </div>
+        <div>
+          <label>Описание</label>
+          <input id="orderDesc" value="test" />
+        </div>
+      </div>
+      <div class="btns">
+        <button id="btnCreateOrder">Создать заказ</button>
+        <button id="btnConnect" class="secondary">Подключиться к заказу вручную</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label>order_id</label>
+          <input id="orderId" placeholder="UUID заказа" />
+        </div>
+        <div>
+          <label>WS статус</label>
+          <input id="wsState" value="disconnected" disabled />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
+        <div>
+          <div style="font-weight:700">Логи (клиент)</div>
+          <div class="muted">Сюда дублируются сообщения, которые прилетели по WebSocket.</div>
+        </div>
+        <button id="btnClear" class="secondary">Очистить</button>
+      </div>
+      <pre id="log"></pre>
+    </div>
+  </div>
+
+<script>
+  const qs = (id) => document.getElementById(id);
+  const log = (msg) => { qs('log').textContent += msg + "\n"; };
+  const TOAST_MS_STATUS = 10000;
+  const TOAST_MS_DEFAULT = 1800;
+  const toastByKey = new Map();
+  const toastTimers = new Map();
+
+  const toast = (title, details, opts = {}) => {
+    const ms = Number.isFinite(opts.ms) ? opts.ms : TOAST_MS_DEFAULT;
+    const key = opts.key ? String(opts.key) : null;
+
+    let el = null;
+    if (key && toastByKey.has(key)) {
+      el = toastByKey.get(key);
+    }
+
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'toast';
+      el.innerHTML = `<div class="t"></div><div class="d"></div>`;
+      qs('toasts').appendChild(el);
+      if (key) {
+        toastByKey.set(key, el);
+      }
+    }
+
+    el.querySelector('.t').textContent = String(title);
+    el.querySelector('.d').textContent = String(details);
+    el.style.opacity = '1';
+    el.style.transition = '';
+
+    const prev = toastTimers.get(el);
+    if (prev) {
+      clearTimeout(prev.fade);
+      clearTimeout(prev.remove);
+    }
+
+    const fadeMs = 350;
+    const startFade = Math.max(0, ms - fadeMs);
+
+    const fade = setTimeout(() => {
+      el.style.opacity = '0';
+      el.style.transition = `opacity ${fadeMs}ms`;
+    }, startFade);
+
+    const remove = setTimeout(() => {
+      el.remove();
+      toastTimers.delete(el);
+      if (key) {
+        toastByKey.delete(key);
+      }
+    }, ms);
+
+    toastTimers.set(el, { fade, remove });
+  };
+  const escapeHtml = (s) => String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+
+  const api = async (path, opts = {}) => {
+    const userId = qs('userId').value.trim();
+    const headers = Object.assign({ 'Content-Type': 'application/json', 'X-User-Id': userId }, opts.headers || {});
+    const res = await fetch(path, Object.assign({}, opts, { headers }));
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`${res.status} ${res.statusText}: ${text}`);
+    }
+    try { return JSON.parse(text); } catch { return text; }
+  };
+
+  let ws = null;
+  const setWsState = (s) => { qs('wsState').value = s; };
+
+  const connectWs = (orderId) => {
+    const userId = qs('userId').value.trim();
+    if (orderId && typeof orderId === 'object') {
+      orderId = orderId.id || orderId.order_id || orderId.orderId;
+    }
+    orderId = String(orderId || '').trim();
+    if (!orderId) {
+      toast('Нет order_id', 'Сначала создайте заказ или вставьте UUID вручную.');
+      return;
+    }
+    if (ws) {
+      try { ws.close(); } catch {}
+      ws = null;
+    }
+
+    const proto = (location.protocol === 'https:') ? 'wss' : 'ws';
+    const url = `${proto}://${location.host}/ws/orders/${encodeURIComponent(orderId)}?user_id=${encodeURIComponent(userId)}`;
+
+    setWsState('connecting');
+    toast('WebSocket', `Подключение: ${url}`);
+
+    ws = new WebSocket(url);
+
+    ws.onopen = () => {
+      setWsState('connected');
+      log(`[WS] connected to order=${orderId}`);
+    };
+
+    ws.onmessage = (e) => {
+      log(`[WS] ${e.data}`);
+      let data;
+      try { data = JSON.parse(e.data); } catch { data = { raw: e.data }; }
+
+      const t = data.type || 'message';
+      if (t === 'snapshot') {
+        toast(
+          'Статус заказа',
+          `order=${data.order_id} → ${data.status}`,
+          { ms: TOAST_MS_STATUS, key: `status:${data.order_id}` }
+        );
+      } else if (t === 'status_update') {
+        toast(
+          'Статус заказа изменился',
+          `order=${data.order_id} → ${data.status}`,
+          { ms: TOAST_MS_STATUS, key: `status:${data.order_id}` }
+        );
+        if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+          try { new Notification('Статус заказа изменился', { body: `Заказ ${data.order_id}: ${data.status}` }); } catch {}
+        }
+        if (data.status === 'FINISHED' || data.status === 'CANCELLED') {
+          try { ws.close(); } catch {}
+        }
+      } else {
+        toast('Сообщение', JSON.stringify(data));
+      }
+    };
+
+    ws.onerror = () => {
+      toast('WebSocket', 'Ошибка соединения.');
+      setWsState('error');
+    };
+
+    ws.onclose = () => {
+      setWsState('disconnected');
+      log('[WS] closed');
+    };
+  };
+
+  qs('btnEnable').onclick = async () => {
+    if (typeof Notification === 'undefined') {
+      toast('Уведомления', 'Notification API недоступен в этом браузере.');
+      return;
+    }
+    try {
+      const res = await Notification.requestPermission();
+      toast('Уведомления', `Permission: ${res}`);
+    } catch (e) {
+      toast('Уведомления', `Ошибка: ${e}`);
+    }
+  };
+
+  qs('btnCreateAccount').onclick = async () => {
+    try {
+      const r = await api('/api/account', { method: 'POST' });
+      toast('Счет создан', JSON.stringify(r));
+    } catch (e) {
+      toast('Ошибка', String(e));
+    }
+  };
+
+  qs('btnDeposit').onclick = async () => {
+    try {
+      const amount = Number(qs('depositAmount').value);
+      const r = await api('/api/account/deposit', { method: 'POST', body: JSON.stringify({ amount }) });
+      toast('Пополнение', JSON.stringify(r));
+    } catch (e) {
+      toast('Ошибка', String(e));
+    }
+  };
+
+  qs('btnCreateOrder').onclick = async () => {
+    try {
+      const amount = Number(qs('orderAmount').value);
+      const description = qs('orderDesc').value;
+      const resp = await api('/api/orders', { method: 'POST', body: JSON.stringify({ amount, description }) });
+      const orderId = (resp && typeof resp === 'object')
+        ? (resp.id || resp.order_id || resp.orderId)
+        : resp;
+      qs('orderId').value = String(orderId || '').replaceAll('"','');
+      toast('Заказ создан', `order_id=${qs('orderId').value}`);
+      connectWs(qs('orderId').value);
+    } catch (e) {
+      toast('Ошибка', String(e));
+    }
+  };
+
+  qs('btnConnect').onclick = () => connectWs(qs('orderId').value.trim());
+
+  qs('btnClear').onclick = () => { qs('log').textContent = ''; };
+</script>
+</body>
+</html>
