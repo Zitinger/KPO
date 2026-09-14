@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api_gateway/Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8080:8000"
+    environment:
+      - FILE_STORING_URL=http://file-storing-service:8000
+      - FILE_ANALYSIS_URL=http://file-analysis-service:8000
+    depends_on:
+      - file-storing-service
+      - file-analysis-service
+
+  file-storing-service:
+    build:
+      context: .
+      dockerfile: file_storing_service/Dockerfile
+    container_name: file-storing-service
+    ports:
+      - "8081:8000"
+    environment:
+      - FILE_STORING_DB_PATH=/db/file_storing.db
+      - FILE_STORAGE_DIR=/files
+    volumes:
+      - ./db:/db
+      - ./storage/file_storing:/files
+
+  file-analysis-service:
+    build:
+      context: .
+      dockerfile: file_analysis_service/Dockerfile
+    container_name: file-analysis-service
+    ports:
+      - "8082:8000"
+    environment:
+      - FILE_ANALYSIS_DB_PATH=/db/file_analysis.db
+      - FILE_STORING_URL=http://file-storing-service:8000
+      - PLAGIARISM_THRESHOLD=50.0
+    volumes:
+      - ./db:/db

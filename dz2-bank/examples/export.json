@@ -1,0 +1,46 @@
+{
+  "accounts": [
+    {
+      "id": "283a2e13-1f3d-406d-baf0-528901c5a36e",
+      "name": "Основной",
+      "balance": 0.0
+    },
+    {
+      "id": "b8f33115-843d-4968-8d4b-fa8628e6c729",
+      "name": "Основной",
+      "balance": 850.0
+    }
+  ],
+  "categories": [
+    {
+      "id": "75a551a3-3648-4626-b4ab-812d2dc0b30c",
+      "type": "expense",
+      "name": "Кафе"
+    },
+    {
+      "id": "a20495f7-674a-44a6-923c-c1be232493d7",
+      "type": "income",
+      "name": "Зарплата"
+    }
+  ],
+  "operations": [
+    {
+      "id": "5c74c385-2aba-4df1-ba20-6e5094584e9d",
+      "type": "income",
+      "bank_account_id": "b8f33115-843d-4968-8d4b-fa8628e6c729",
+      "amount": 1000.0,
+      "date": "2025-11-01",
+      "description": null,
+      "category_id": "a20495f7-674a-44a6-923c-c1be232493d7"
+    },
+    {
+      "id": "1cbe32ef-4fe9-455f-921c-d2b9ebfe6726",
+      "type": "expense",
+      "bank_account_id": "b8f33115-843d-4968-8d4b-fa8628e6c729",
+      "amount": 150.0,
+      "date": "2025-11-02",
+      "description": "Латте",
+      "category_id": "75a551a3-3648-4626-b4ab-812d2dc0b30c"
+    }
+  ]
+}
